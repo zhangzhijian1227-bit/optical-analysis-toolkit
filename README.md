@@ -1,8 +1,8 @@
 # Optical Analysis Toolkit
 
-Python toolkit for analyzing optics lab data (polarization, diffraction, birefringence). Made for L3 Physics at Sorbonne Université.
+A Python toolkit for analyzing optics lab data (polarization, diffraction, birefringence), developed during L3 Physics at Sorbonne Université.
 
-## What is this?
+## Why does it exist?
 
 Basically it's a set of Python functions to process data from optics labs. Instead of redoing everything by hand in Excel every time, I put all the fits, uncertainty calculations and plots together in one package.
 
@@ -10,6 +10,16 @@ The data used in the examples comes from actual lab sessions:
 - Polarization (Malus' law, waveplates, Brewster's angle)
 - Diffraction (single/double slit, gratings)
 - Birefringence (channeled spectra, photoelasticity)
+
+## What it actually does
+
+**`polarization.py`** - Malus' law fits ($I = I_0 \cos^2\theta$), waveplate analysis ($\lambda$/2, $\lambda$/4), Brewster's angle, degree of polarization. Returns fitted parameters, uncertainties and goodness-of-fit $R^2$.
+
+**`diffraction.py`** - Extracts slit widths using $sinc^2$ profile fitting for single slit, fringe spacing for double slits, and grating characterization.
+
+**`birefringence.py`** - Calculates $\Delta n = \Delta/e$, analyzes channeled spectra (spectral fringes), and handles photoelasticity data.
+
+**`visualization.py`** - Generates report-ready plots with error bars, residuals, polar plots.
 
 ## Structure
 ```
@@ -61,7 +71,7 @@ from optics import diffraction
 
 # Determine slit width from the diffraction profile
 result = diffraction.fit_single_slit(positions, intensities, wavelength=633e-9)
-print(f"Slit width: {result.slit_width*1e6:.1f} ± {result.u_slit_width*1e6:.1f} µm")
+print(f"Slit width: {result.slit_width*1e6:.1f} +/- {result.u_slit_width*1e6:.1f} µm")
 ```
 
 ### Birefringence
@@ -74,19 +84,10 @@ delta_n = birefringence.calculate_birefringence(
 )
 ```
 
-## What it actually does
-
-**`polarization.py`** - Fits Malus' law ($I = I_0 \cos^2\theta$), waveplate analysis (λ/2, λ/4), Brewster's angle determination, degree of polarization. Fits return parameters with uncertainties and R².
-
-**`diffraction.py`** - sinc² profile fitting for single slit, fringe spacing for double slit, grating characterization. You can also compute theoretical profiles to compare with.
-
-**`birefringence.py`** - Birefringence calculation Δn = Δ/e, channeled spectra analysis (spectral fringes), waveplate classification, photoelasticity.
-
-**`visualization.py`** - Plots with error bars, residuals, polar plots for polarization, spectral plots. The style is clean enough to put in a lab report.
 
 ## Notebooks
 
-The notebooks in `examples/` show how to use the toolkit on real lab data. The most complete one is `malus_law_demo.ipynb` which does the full Malus' law analysis from start to finish.
+The notebooks in `examples/` show how to use the toolkit on real lab data. The most complete one is `malus_law.ipynb` which does the full Malus' law analysis from start to finish.
 
 ## Dependencies
 

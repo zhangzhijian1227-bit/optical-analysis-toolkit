@@ -11,7 +11,7 @@ The data used in the examples comes from actual lab sessions:
 - Diffraction (single/double slit, gratings)
 - Birefringence (channeled spectra, photoelasticity)
 
-## What it actually does
+## What's included?
 
 **`polarization.py`** - Malus' law fits ($I = I_0 \cos^2\theta$), waveplate analysis ($\lambda$/2, $\lambda$/4), Brewster's angle, degree of polarization. Returns fitted parameters, uncertainties and goodness-of-fit $R^2$.
 

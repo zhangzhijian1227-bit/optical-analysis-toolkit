@@ -6,114 +6,94 @@ TP Optics L3, Sorbonne.
 import numpy as np
 from scipy.optimize import curve_fit
 
+
 def linear_func(x, a, b):
     return a * x + b
 
+def proportional_func(x, a):
+    return a * x
 
-def analyze_single_slit(x_positions, orders, D, lam=578e-9):
-    """
-    Calculate slit width 'a'.
-    Formula: x = (lambda * D / a) * p
-    """
-    popt, pcov = curve_fit(linear_func, orders, x_positions)
 
-    slope = popt[0]  # = lam * D / a
+def analyze_single_slit(x_pos, orders, D, lam=578e-9):
+    """
+    Calculate slit width 'a' from minima positions.
+    Formula: x = (lam * D / a) * p
+    """
+    popt, pcov = curve_fit(linear_func, orders, x_pos)
+
+    slope = popt[0]        # = lam * D / a
     intercept = popt[1]
-    slope_err = np.sqrt(pcov[0][0])
+    u_slope = np.sqrt(pcov[0][0])
 
-    # a = lam * D / slope
     a = (lam * D) / slope
-    a_err = a * (slope_err / slope)
+    u_a = a * (u_slope / slope)
 
-    residuals = x_positions - linear_func(orders, slope, intercept)
+    residuals = x_pos - linear_func(orders, slope, intercept)
     ss_res = np.sum(residuals**2)
-    ss_tot = np.sum((x_positions - np.mean(x_positions))**2)
-    r2 = 1 - (ss_res / ss_tot)
+    ss_tot = np.sum((x_pos - np.mean(x_pos))**2)
+    r2 = 1 - ss_res / ss_tot
 
-    results = {
-        "a": a,
-        "a_err": a_err,
-        "R2": r2,
-        "slope": slope,
-        "intercept": intercept,
-    }
-    return results
+    return {"a": a, "u_a": u_a, "R2": r2, "slope": slope, "intercept": intercept}
 
 
-def analyze_double_slit(x_positions, orders, D, lam=578e-9):
+def analyze_double_slit(x_pos, orders, D, lam=578e-9):
     """
-    Calculate slit separation 'b'.
-    Same idea: x = (lambda * D / b) * n
+    Calculate slit separation 'b' from fringe positions.
+    x = (lam * D / b) * n
     """
-    popt, pcov = curve_fit(linear_func, orders, x_positions)
+    popt, pcov = curve_fit(linear_func, orders, x_pos)
 
     slope = popt[0]
-    slope_err = np.sqrt(pcov[0][0])
+    u_slope = np.sqrt(pcov[0][0])
 
     b = (lam * D) / slope
-    b_err = b * (slope_err / slope)
+    u_b = b * (u_slope / slope)
 
-    return b, b_err
+    return b, u_b
 
 
 def get_wavelength_grating(angles_deg, orders, d):
     """
-    Find wavelength from grating with known d.
-    d * sin(theta) = n * lambda
-    => sin(theta) = (lambda/d) * n
+    Find wavelength from grating equation: d * sin(theta) = n * lam
+    => sin(theta) = (lam / d) * n
     """
-    theta = np.deg2rad(angles_deg)
-    y_vals = np.sin(theta)
+    sin_theta = np.sin(np.deg2rad(angles_deg))
 
-    def grating_model(n, slope):
-        return slope * n
+    popt, pcov = curve_fit(proportional_func, orders, sin_theta)
 
-    popt, pcov = curve_fit(grating_model, orders, y_vals)
+    slope = popt[0]        # = lam / d
+    u_slope = np.sqrt(pcov[0][0])
 
-    slope = popt[0]  # = lambda / d
-    slope_err = np.sqrt(pcov[0][0])
+    lam = slope * d
+    u_lam = u_slope * d
 
-    wl = slope * d
-    wl_err = slope_err * d
-
-    return wl, wl_err
+    return lam, u_lam
 
 
 def get_grating_constant(sin_theta, wavelengths):
     """
     Find grating constant d from known spectral lines (1st order).
-    sin(theta) = (1/d) * lambda
-    Used this for the mercury lamp in TP5.
+    sin(theta) = (1/d) * lam
+    Used for mercury lamp in TP5.
     """
-    def model(lam, A):
-        return A * lam
+    popt, pcov = curve_fit(proportional_func, wavelengths, sin_theta)
 
-    popt, pcov = curve_fit(model, wavelengths, sin_theta)
-
-    A = popt[0]  # = 1/d
-    A_err = np.sqrt(pcov[0][0])
+    A = popt[0]            # = 1/d
+    u_A = np.sqrt(pcov[0][0])
 
     d = 1 / A
-    d_err = A_err / A**2
+    u_d = u_A / A**2
 
-    return d, d_err
+    return d, u_d
 
 
 def sinc_intensity_profile(x, a, lam, f, I0):
     """
-    Theoretical single slit intensity.
-    I = I0 * (sin(beta)/beta)^2
-    beta = (k * a * x) / (2 * f)
+    Single slit intensity: I = I0 * sinc^2(a*x / (lam*f))
+    np.sinc(X) = sin(pi*X) / (pi*X), so X = a*x / (lam*f).
     """
-    k = 2 * np.pi / lam
-    beta = (k * a * x) / (2 * f)
-
-    # add tiny number to avoid division by zero
-    # make it works
-    beta = beta + 1e-10
-
-    intensity = I0 * (np.sin(beta) / beta)**2
-    return intensity
+    X = (a * x) / (lam * f)
+    return I0 * np.sinc(X)**2
 
 
 def fringe_visibility(I_max, I_min):
@@ -124,25 +104,23 @@ def fringe_visibility(I_max, I_min):
 
 
 if __name__ == "__main__":
-    print(" Testing diffraction ")
+    print("testing diffraction")
 
-    # fake data
     orders = np.array([-3, -2, -1, 1, 2, 3])
     D = 0.3  # 30 cm
-    pos = np.array([-0.0013, -0.00085, -0.00042, 0.00044, 0.00088, 0.00132])
+    x_pos = np.array([-0.0013, -0.00085, -0.00042, 0.00044, 0.00088, 0.00132])
 
-    res = analyze_single_slit(pos, orders, D)
+    res = analyze_single_slit(x_pos, orders, D)
     print(f"a = {res['a']*1e6:.1f} um")
-    print(f"error = {res['a_err']*1e6:.1f} um")
+    print(f"u_a = {res['u_a']*1e6:.1f} um")
     print(f"R2 = {res['R2']:.6f}")
 
-    # check sinc shape
     import matplotlib.pyplot as plt
     x = np.linspace(-0.005, 0.005, 200)
     I = sinc_intensity_profile(x, res["a"], 578e-9, D, 1.0)
     plt.plot(x * 1e3, I)
-    plt.xlabel("Position x (mm)")
+    plt.xlabel("x (mm)")
     plt.ylabel("Intensity (a.u.)")
-    plt.title(f"Sinc check (a={res['a']*1e6:.0f}um)")
+    plt.title(f"sinc check (a={res['a']*1e6:.0f} um)")
     plt.grid(True, alpha=0.3)
     plt.show()

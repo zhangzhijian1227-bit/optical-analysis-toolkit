@@ -3,10 +3,9 @@ Birefringence analysis.
 TP Optics L3, Sorbonne.
 """
 
-import warnings
 import numpy as np
 from scipy.optimize import curve_fit
-from scipy import signal
+from scipy.signal import find_peaks, savgol_filter
 
 
 def phase_difference(dn, e, lam):
@@ -14,46 +13,31 @@ def phase_difference(dn, e, lam):
     return 2 * np.pi * dn * e / lam
 
 
-def analyze_spectral_fringes(wavelengths, intensities, e, smoothing=True):
+def analyze_spectral_fringes(wl, I, e):
     """
-    Get birefringence from spectral fringes (cannelures).
-    Fringes are equally spaced in 1/lambda, spacing = 1/(dn*e).
-    Returns (dn, list of peak wavelengths).
+    Calculate birefringence dn from spectral fringes.
     """
-    if smoothing:
-        # savgol window — tried a few values, this works for our spectrometer
-        wlen = min(51, len(intensities) // 10)
-        if wlen % 2 == 0:
-            wlen += 1
-        from scipy.signal import savgol_filter
-        intensities_smooth = savgol_filter(intensities, wlen, 3)
-    else:
-        intensities_smooth = intensities
-
-    # these peak-finding params were tuned by hand for our TP spectra
-    peaks, _ = signal.find_peaks(intensities_smooth,
-                                 prominence=0.1 * np.max(intensities),
-                                 distance=len(wavelengths) // 20)
+    # Adjusted prominence and distance manually by looking at the plotted spectra
+    peaks, _ = find_peaks(I, prominence=200, distance=50)
 
     if len(peaks) < 2:
-        warnings.warn("Not enough peaks")
-        return np.nan, []
+        print("analyze_spectral_fringes: not enough peaks found")
+        return np.nan, peaks
 
-    fringe_wl = wavelengths[peaks]
+    fringe_wl = wl[peaks]
+    spacings = np.diff(1 / fringe_wl)
 
-    # spacing in 1/lambda - dn*e
-    inv_lam = 1 / fringe_wl
-    spacings = np.diff(inv_lam)
+    # dn = 1 / (Delta(1/lambda) * e)
     dn = 1 / (np.mean(spacings) * e)
 
-    return dn, fringe_wl.tolist()
+    return dn, peaks
 
 
 def stress_birefringence(sigma, C=None):
     """
     dn = C * sigma (stress-optic law).
-    C defaults to 3.5e-12 for PMMA (from Hecht table 8.1 / our TP sheet).
-    Change it if you're using glass or polycarbonate.
+    C defaults to 3.5e-12 for PMMA (Hecht table 8.1 / TP sheet).
+    Change if using glass or polycarbonate.
     """
     if C is None:
         C = 3.5e-12  # PMMA
@@ -63,7 +47,7 @@ def stress_birefringence(sigma, C=None):
 def wave_plate_type(dn, e, lam):
     """
     Check what kind of wave plate this is.
-    Returns (retardation_in_waves, type_string).
+    Returns (retardation in waves, type string).
     """
     ret = dn * e / lam
     frac = ret % 1.0
@@ -81,38 +65,30 @@ def wave_plate_type(dn, e, lam):
     return ret, ptype
 
 
-def find_extinction_angles(angles, intensities, threshold_frac=0.1):
+def find_extinction_angles(angles, I, threshold_frac=0.1):
+    """Find angles where intensity is near zero (extinction)."""
+    threshold = threshold_frac * np.max(I)
+    minima, _ = find_peaks(-I, height=-threshold, distance=len(angles) // 10)
+    return angles[minima]
+
+
+def check_circular_polarization(I_vals, tol=0.1):
     """
-    Find angles where intensity is near zero (extinction).
-    Returns list of angles.
-    """
-    threshold = threshold_frac * np.max(intensities)
-
-    minima, _ = signal.find_peaks(-intensities,
-                                  height=-threshold,
-                                  distance=len(angles) // 10)
-
-    return angles[minima].tolist()
-
-
-def check_circular_polarization(I_0, I_90, I_45, I_135, tol=0.1):
-    """
-    If intensity is about the same at all 4 angles -> circular.
+    If intensity is about the same at all angles -> circular.
+    Pass I measured at [0, 45, 90, 135] deg.
     Returns (is_circular, uniformity).
     """
-    vals = np.array([I_0, I_90, I_45, I_135])
-    mean_I = np.mean(vals)
+    I_vals = np.asarray(I_vals)
+    mean_I = np.mean(I_vals)
     if mean_I == 0:
         return False, 0.0
-
-    variation = np.std(vals) / mean_I
+    variation = np.std(I_vals) / mean_I
     return variation < tol, 1 - variation
 
 
 def malus_through_birefringent(theta_deg, dn, e, lam):
     """
-    Intensity through birefringent plate between crossed polarizers.
-    I = sin^2(2*theta) * sin^2(dphi/2)
+    I = sin^2(2*theta) * sin^2(dphi/2), between crossed polarizers.
     """
     theta = np.deg2rad(theta_deg)
     dphi = 2 * np.pi * dn * e / lam
@@ -120,24 +96,23 @@ def malus_through_birefringent(theta_deg, dn, e, lam):
 
 
 if __name__ == "__main__":
-    print(" Testing birefringence ")
+    print("--- testing birefringence ---")
 
     # quartz numbers
     dn = 0.009
-    e = 1e-3   # 1 mm
+    e = 1e-3    # 1 mm
     lam = 589e-9  # sodium D
 
     dphi = phase_difference(dn, e, lam)
-    print(f"Phase diff: {dphi/np.pi:.1f} pi rad")
+    print(f"phase diff: {dphi/np.pi:.1f} pi rad")
 
     ret, ptype = wave_plate_type(dn, e, lam)
-    print(f"Retardation: {ret:.2f} waves -> {ptype}")
+    print(f"retardation: {ret:.2f} waves -> {ptype}")
 
     # simulate fringes and recover dn
     wls = np.linspace(400e-9, 700e-9, 2000)
-    ph = 2 * np.pi * dn * e / wls
-    I = np.sin(ph)**2
+    I = 1000 * np.sin(2 * np.pi * dn * e / wls)**2
 
     dn_recovered, peaks = analyze_spectral_fringes(wls, I, e)
-    print(f"dn recovered = {dn_recovered:.4f} (expected {dn})")
-    print(f"Found {len(peaks)} peaks")
+    print(f"dn recovered = {dn_recovered:.4f}  (expected {dn})")
+    print(f"found {len(peaks)} peaks")
